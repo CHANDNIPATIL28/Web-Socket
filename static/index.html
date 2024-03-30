@@ -1,0 +1,96 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <title>WebSocket Client Interface</title>
+   <style>
+       .letter-button {
+           padding: 5px 15px;
+           margin: 2px;
+           border: 1px solid #000;
+           background-color: #fff;
+           cursor: pointer;
+       }
+       .subscribed {
+           background-color: #0f0;
+       }
+       #messages {
+           margin-top: 20px;
+           border: 1px solid #ccc;
+           padding: 10px;
+       }
+   </style>
+</head>
+<body>
+   <h2>WebSocket Client Interface</h2>
+   <div id="letters"></div>
+   <div id="messages"></div>
+   <script>
+       const ws = new WebSocket('ws://localhost:8000/ws');
+       const lettersDiv = document.getElementById('letters');
+       const messagesDiv = document.getElementById('messages');
+       const subscribedLetters = new Set();
+
+       let updateBuffer = {};
+       let updateTimeout;
+
+       function processUpdates() {
+           let updateMessages = [];
+           for (const [letter, number] of Object.entries(updateBuffer)) {
+               if (subscribedLetters.has(letter)) {
+                   updateMessages.push(`${letter} = ${number}`);
+               }
+           }
+
+           if (updateMessages.length > 0) {
+               const messageElement = document.createElement('p');
+               messageElement.textContent = `Letters updated: ${updateMessages.join(', ')}.`;
+               messagesDiv.appendChild(messageElement);
+           }
+
+           // Clear the buffer after processing
+           updateBuffer = {};
+       }
+
+       ws.onmessage = function(event) {
+           const updates = JSON.parse(event.data);
+
+           // Merge updates into the buffer
+           Object.entries(updates).forEach(([letter, number]) => {
+               if (subscribedLetters.has(letter)) {
+                   updateBuffer[letter] = number;
+               }
+           });
+
+           // Clear the previous timeout and set a new one
+           clearTimeout(updateTimeout);
+           updateTimeout = setTimeout(processUpdates, 100);  // Adjust the delay as needed
+       };
+
+       // Generate letter buttons
+       const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+       letters.split('').forEach(letter => {
+           const button = document.createElement('button');
+           button.textContent = letter;
+           button.classList.add('letter-button');
+           button.id = `letter-${letter}`; // Assign a unique ID to each button
+           button.onclick = () => toggleSubscription(letter, button);
+           lettersDiv.appendChild(button);
+       });
+
+       // Update the toggleSubscription function to add/remove letters from subscribedLetters
+       function toggleSubscription(letter, button) {
+           if (button.classList.contains('subscribed')) {
+               ws.send(JSON.stringify({ action: 'unsubscribe', letter: letter }));
+               button.classList.remove('subscribed');
+               subscribedLetters.delete(letter);  // Remove from subscribed letters
+           } else {
+               ws.send(JSON.stringify({ action: 'subscribe', letter: letter }));
+               button.classList.add('subscribed');
+               subscribedLetters.add(letter);  // Add to subscribed letters
+           }
+       }
+   </script>
+</body>
+</html>
